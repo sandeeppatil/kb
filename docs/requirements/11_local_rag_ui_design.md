@@ -69,7 +69,7 @@ flowchart LR
 4. User expands a result to inspect source page, chunk structure, table rendering, and image references.
 5. User marks the Space as ready for sharing after spot-checking quality.
 
-### 6.5 Operate the MCP Server
+### 6.4 Operate the MCP Server
 1. User opens MCP Server screen.
 2. User starts the local server or verifies it is already running.
 3. System shows discovered Spaces and generated MCP tools.
