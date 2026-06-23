@@ -21,7 +21,7 @@ The system consists of two primary interfaces designed to run locally, ensuring 
 - **Chunking Strategy:** Implements logical, hierarchy-aware chunking (e.g., via LangChain's `DoclingLoader` and `HybridChunker`). 
   - **Tables:** Preserves nested tables as structured hierarchical units.
   - **Multi-modal:** Extracts and maintains local references to images and figures.
-- **Storage:** Writes outputs directly to a local, file-based vector database (LanceDB is preferred for handling multi-modal data efficiently) designated as a specific "Space".
+- **Storage:** Writes outputs directly to a local, file-based vector database (LanceDB is preferred for handling multi-modal data efficiently) designated as a specific "Space", and supports repeated ingestion runs that append more PDFs into an existing Space.
 
 ### 3.2. Interface 2: Retrieval & MCP Server
 **Purpose:** Expose "Spaces" to AI coding clients and dynamically route queries.
@@ -37,8 +37,10 @@ The system consists of two primary interfaces designed to run locally, ensuring 
 - **F-1.2:** Each Space MUST be stored as portable file(s) (e.g., a LanceDB folder + `metadata.json`).
 - **F-1.3:** Spaces MUST be shareable across teams (e.g., via Git LFS, shared drives, or S3) without requiring re-computation.
 - **F-1.4:** Space metadata MUST include: short description, embedding model name/version, chunking strategy used, and creation timestamp.
+- **F-1.5:** The system MUST allow an existing Space to be updated by ingesting additional PDFs into that Space without recreating it from scratch.
+- **F-1.6:** When a Space is updated, the system MUST preserve existing indexed content, refresh affected vector and keyword indices, and record the update in Space metadata or ingestion history.
 
-**Example:** A team creates an "HR Policies" space and an "API Docs" space. They commit the isolated space directories to Git LFS. New developers clone the repo and can immediately query API documentation locally without running the ingestion pipeline.
+**Example:** A team creates an "HR Policies" space and an "API Docs" space. They commit the isolated space directories to Git LFS. New developers clone the repo and can immediately query API documentation locally without running the ingestion pipeline. Later, the API team adds a new PDF release note to the existing `API Docs` space. The ingestion pipeline appends the new content, refreshes the indices, and makes the new material searchable without rebuilding the entire Space.
 
 Here is an example structure of a root knowledge base folder containing these two spaces:
 
@@ -64,18 +66,22 @@ kb_root/
 - **VC-1.1:** User can initialize two distinct spaces and query them independently without data crossover.
 - **VC-1.2:** A space directory copied from Machine A to Machine B is successfully read by Machine B's MCP server without any re-ingestion steps.
 - **VC-1.3:** `metadata.json` exists in the space root and validates against a predefined JSON schema.
+- **VC-1.4:** User can select an existing Space, add one or more new PDFs, and retrieve newly added content without recreating the Space.
+- **VC-1.5:** Existing documents remain queryable after the update, and the Space's metadata or ingestion history reflects the incremental ingestion run.
 
 ### 4.2. Ingestion & Chunking
 - **F-2.1:** The ingestion pipeline MUST process PDFs using Docling, supporting text, tables, and images.
 - **F-2.2:** Chunking MUST be logical (by paragraph, section, or structural element) rather than fixed-size character splitting.
 - **F-2.3:** Nested and simple tables MUST be extracted while retaining their row/column semantic structure (e.g., formatted as Markdown or HTML within the chunk).
+- **F-2.4:** The ingestion pipeline MUST support append-mode ingestion for an existing Space, including duplicate-file detection or warning before new chunks are written.
 
-**Example:** When ingesting a 100-page hardware manual, a pinout configuration table spanning two pages is ingested as a complete, logically linked entity rather than being split arbitrarily at the 1,000-character mark.
+**Example:** When ingesting a 100-page hardware manual, a pinout configuration table spanning two pages is ingested as a complete, logically linked entity rather than being split arbitrarily at the 1,000-character mark. If the team later adds an appendix PDF to the same manual Space, the system appends only the new document content and updates the existing indices.
 
 **Verification Criteria:**
 - **VC-2.1:** System successfully ingests a standard, layout-heavy test PDF (e.g., an IEEE paper) and populates the vector store without crashing.
 - **VC-2.2:** Inspecting the generated chunks reveals that text boundaries align with structural elements (headers, paragraphs) consistently.
 - **VC-2.3:** A complex table embedded in the output retains identifiable structure enabling an LLM to accurately answer granular tabular questions (e.g., "What is the voltage for Pin 4?").
+- **VC-2.4:** Running ingestion a second time against the same Space with one new PDF and one already ingested PDF results in newly indexed content plus a duplicate warning or skip for the repeated file.
 
 ### 4.3. Retrieval & Routing
 - **F-3.1:** The MCP server MUST read all available Space metadata on startup and expose them as descriptive Tools or Resources to the client.
