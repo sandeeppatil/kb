@@ -12,6 +12,7 @@ This document converts the PRD into an implementable technical architecture for 
 - Fast retrieval using hybrid search and lightweight metadata routing.
 - Strict compatibility between stored vectors and embedding models.
 - Clear separation between ingestion-time processing and retrieval-time serving.
+- Simple and predictable operational model under concurrent ingestion and retrieval.
 
 ## 3. High-Level Architecture
 ```mermaid
@@ -89,6 +90,7 @@ flowchart LR
 **Responsibilities**
 - Persist vectors, text payloads, and metadata in a portable file structure
 - Support vector search, BM25 or equivalent lexical search, and source reconstruction
+- Provide simple concurrency semantics for ingestion and retrieval
 
 **Preferred Storage**
 - LanceDB as the primary vector store due to local file portability and multimodal support
@@ -192,7 +194,7 @@ sequenceDiagram
 2. The ingestion orchestrator loads the Space manifest and fingerprints incoming files.
 3. The system flags duplicates or previously ingested files according to the configured update policy.
 4. Only approved new content is parsed, chunked, embedded, and appended to the Space.
-5. The vector and lexical indices, source manifest, and `last_updated_at` metadata are refreshed atomically.
+5. The vector and lexical indices, source manifest, and `last_updated_at` metadata are refreshed atomically from the perspective of retrieval queries.
 6. The run is recorded in `ingestion_runs` so the UI and operators can audit incremental updates.
 
 ### 7.3 Retrieval Flow
@@ -236,39 +238,25 @@ sequenceDiagram
 - Retrieval verifies the active query embedder matches the stored Space requirements.
 - If a model is missing, the system prompts the user or triggers a local pull workflow.
 
-## 9. Integration Contracts
+## 9. Concurrency and Deployment Model
 
-### 9.1 CLI Contract
-Suggested commands:
-- `space create`
-- `space list`
-- `ingest run`
-- `search test`
-- `mcp serve`
+### 9.1 Concurrency Semantics
+- For a given Space, ingestion runs SHOULD be serialized so that only one ingestion job mutates that Space at a time.
+- While an ingestion job is running, retrieval SHOULD continue to serve results from the last fully committed state of that Space.
+- Index and manifest updates for a given ingestion run SHOULD be applied in a way that retrieval either:
+  - sees the old state, or
+  - sees the fully updated state,
+  but does not see a partially updated combination.
 
-The ingestion command should support targeting an existing Space in append mode so new PDFs can be added without rebuilding the full corpus.
+### 9.2 Deployment Profiles
+- **Host-first:** Recommended default where the MCP server and admin console run on the host OS, with ingestion optionally containerized for dependency isolation.
+- **Containerized ingestion:** Ingestion pipeline runs inside Docker for heavier dependencies (e.g., OCR), using `host.docker.internal` to communicate with host services as needed.
+- **Fully containerized:** Possible but not required for v1; IDE connectivity and local file mounts must be configured carefully in this mode.
 
-### 9.2 MCP Contract
-Suggested tool pattern:
-- `search_<space_name>`
-
-Suggested tool input:
-| Field | Type | Purpose |
-| --- | --- | --- |
-| `query` | string | User question or lookup term |
-| `top_k` | integer | Number of results |
-| `mode` | string | `hybrid`, `vector`, or `keyword` |
-
-Suggested tool output:
-| Field | Purpose |
-| --- | --- |
-| `results` | Ranked chunks |
-| `citations` | File, page, and section provenance |
-| `space` | Resolved Space identifier |
-| `model` | Embedding model used |
+The architecture does not require any remote services for normal ingestion and retrieval. Any optional telemetry or remote model download integrations are considered out-of-scope for v1 and must be explicitly opt-in.
 
 ## 10. Performance and Scalability
-- Target retrieval latency under 300ms for a Space containing 10,000 chunks.
+- Target retrieval latency under 300ms for a Space containing 10,000 chunks (as scoped in the PRD to a baseline developer machine class).
 - Prebuild vector and lexical indices during ingestion rather than at query time.
 - Cache loaded embedding models and Space manifests in the MCP server.
 - Keep ingestion asynchronous relative to retrieval so active Spaces remain queryable.
@@ -278,11 +266,12 @@ Suggested tool output:
 - No remote API dependency is required for normal ingestion or retrieval.
 - All document assets, chunks, embeddings, and queries remain on local or explicitly mounted storage.
 - Logs must avoid copying full document contents unless verbose debug mode is enabled locally.
+- The v1 system MUST NOT emit telemetry or usage data to remote endpoints by default; any future telemetry integration must be explicitly configured and is out of scope for this design.
 
 ## 12. Observability
-- Ingestion run logs with counts, warnings, failures, and durations
-- MCP request logs with tool name, latency, and error category
-- Health checks for model availability, Space validity, and index readiness
+- Ingestion run logs with counts, warnings, failures, and durations.
+- MCP request logs with tool name, latency, and error category.
+- Health checks for model availability, Space validity, and index readiness.
 
 ## 13. Risks and Mitigations
 | Risk | Impact | Mitigation |
@@ -291,6 +280,7 @@ Suggested tool output:
 | Complex table structure degrades embeddings | Poor answer fidelity | Store raw structured table plus summary embedding |
 | Docker networking confusion | Broken local integrations | Standardize `host.docker.internal` guidance |
 | Rare technical IDs missed by dense search | False negatives | Hybrid search with lexical score boost |
+| Concurrent ingestion and retrieval cause inconsistent views | Confusing retrieval results | Serialize ingestion per Space and commit index updates atomically from the perspective of retrieval |
 
 ## 14. Proposed Implementation Layers
 | Layer | Suggested Technology |
@@ -308,3 +298,4 @@ Suggested tool output:
 - The MCP server dynamically exposes tools from Space metadata.
 - Retrieval enforces embedding compatibility and supports hybrid ranking.
 - The design supports full offline operation for both ingestion and retrieval.
+- The system exhibits predictable behavior under concurrent ingestion and retrieval, with retrieval never seeing partially applied updates for a Space.
