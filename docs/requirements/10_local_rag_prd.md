@@ -87,6 +87,8 @@ kb_root/
 - **F-3.1:** The MCP server MUST read all available Space metadata on startup and expose them as descriptive Tools or Resources to the client.
 - **F-3.2:** The retriever MUST detect the embedding model from the Space metadata and verify it is loaded before attempting similarity search.
 - **F-3.3:** The retriever MUST support hybrid search (Vector + BM25 keyword matching) to improve accuracy on exact technical terms.
+- **F-3.4:** For queries that contain ID-like tokens (e.g., sequences with digits, hyphens, or all-caps codes), the retriever MUST increase lexical (BM25) weighting relative to vector similarity.
+- **F-3.5:** If a Space references an embedding model that is not available locally, the system MUST detect this condition and surface a clear, actionable error or remediation prompt before executing retrieval.
 
 **Example:** If a user asks Claude Desktop "How do I authenticate with the billing API?", the MCP Server provides tools representing available spaces. The client LLM reads the tool descriptions and autonomously selects the `search_api_docs_space` tool over the `search_hr_policies_space` tool.
 
@@ -94,16 +96,22 @@ kb_root/
 - **VC-3.1:** The MCP server correctly responds to `tools/list` with dynamically generated tools for each local space based on `metadata.json`.
 - **VC-3.2:** Search executes without errors matching the embedding dimension of the user query with the stored vector dimensions.
 - **VC-3.3:** An exact-match query for a rare ID (e.g., "ERR_CODE_9019") successfully retrieves the correct chunk despite low semantic similarity, demonstrating active Hybrid Search.
+- **VC-3.4:** For an ID-like query such as "PART-XYZ-9001", hybrid search returns the correct chunk within the top-k results even when pure dense similarity alone would not.
+- **VC-3.5:** When a Space references a missing embedding model, the system blocks retrieval for that Space and presents a clear error or remediation prompt instead of failing silently.
 
 ## 5. Non-Functional Requirements
 - **Privacy:** 100% local execution. No document data or user queries should leave the local machine.
   - *VC-NFR-1:* Running the entire pipeline (ingestion and retrieval) with the machine disconnected from the internet results in no degradation of capability.
 - **Performance:** Optimized for low-latency vector similarity search to minimize chat lag.
   - *VC-NFR-2:* Time-to-retrieval for a semantic query against a local space containing 10,000 chunks is under 300ms.
+- **Environment:** All performance-related verification is scoped to a baseline developer machine class (for example, 4 physical CPU cores, 16 GB RAM, SSD storage, and no dedicated GPU). 
+  - *VC-NFR-3:* Performance tests document the machine profile used and demonstrate meeting VC-NFR-2 on a machine at or above the baseline.
+- **Network & Telemetry:** The system MUST NOT initiate outbound network connections during normal ingestion and retrieval operations. Optional model downloads or telemetry integrations, if any, MUST be explicitly opt-in and are out of scope for v1.
+  - *VC-NFR-4:* Network monitoring during end-to-end tests shows no outbound connections when running ingestion and retrieval with default settings.
 - **Compatibility:** Built with Python, leveraging standard open-source libraries (e.g., LangChain, LanceDB).
 
 ## 6. Known Challenges & Mitigation Strategies
 1. **Container Networking (if Docker is used):** When triggering workflows or connecting via tools like n8n, use `host.docker.internal` to prevent `localhost` resolution errors.
 2. **Table Embedding Quality:** Instead of exclusively embedding raw tabular text, embed AI-generated summaries of tables while storing the raw Markdown table structure in the metadata payload for faithful reconstruction upon retrieval.
-3. **Corpus Scale & Keyword Importance:** For technical PDFs, dense semantic search often fails on arbitrary part numbers. **Strategy:** Enforce Hybrid Vector RAG (Vector + BM25) within the space retriever, heavily weighting BM25 for queries containing numbers, hyphens, or uppercase IDs.
-4. **Embedding Model Drift:** If a locally shared space expects an embedding model that the user hasn't downloaded (e.g., `nomic-embed-text`), retrieval will fail. **Strategy:** The MCP server should auto-detect missing local models and either prompt the user or automatically pull them via Ollama.
+3. **Corpus Scale & Keyword Importance:** For technical PDFs, dense semantic search often fails on arbitrary part numbers. **Strategy:** Enforce Hybrid Vector RAG (Vector + BM25) within the space retriever, heavily weighting BM25 for queries containing numbers, hyphens, or uppercase IDs (see F-3.3 and F-3.4).
+4. **Embedding Model Drift:** If a locally shared space expects an embedding model that the user hasn't downloaded (e.g., `nomic-embed-text`), retrieval will fail. **Strategy:** The MCP server should auto-detect missing local models and either prompt the user or automatically pull them via Ollama (see F-3.5).
