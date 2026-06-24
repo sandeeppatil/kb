@@ -39,6 +39,7 @@ The system consists of two primary interfaces designed to run locally, ensuring 
 - **F-1.4:** Space metadata MUST include: short description, embedding model name/version, chunking strategy used, and creation timestamp.
 - **F-1.5:** The system MUST allow an existing Space to be updated by ingesting additional PDFs into that Space without recreating it from scratch.
 - **F-1.6:** When a Space is updated, the system MUST preserve existing indexed content, refresh affected vector and keyword indices, and record the update in Space metadata or ingestion history.
+- **F-1.7:** The Space management UI MUST scan the configured knowledge base root folder and automatically list existing Spaces discovered under `kb_root/spaces/` without requiring manual import.
 
 **Example:** A team creates an "HR Policies" space and an "API Docs" space. They commit the isolated space directories to Git LFS. New developers clone the repo and can immediately query API documentation locally without running the ingestion pipeline. Later, the API team adds a new PDF release note to the existing `API Docs` space. The ingestion pipeline appends the new content, refreshes the indices, and makes the new material searchable without rebuilding the entire Space.
 
@@ -68,6 +69,7 @@ kb_root/
 - **VC-1.3:** `metadata.json` exists in the space root and validates against a predefined JSON schema.
 - **VC-1.4:** User can select an existing Space, add one or more new PDFs, and retrieve newly added content without recreating the Space.
 - **VC-1.5:** Existing documents remain queryable after the update, and the Space's metadata or ingestion history reflects the incremental ingestion run.
+- **VC-1.6:** After copying a valid Space directory (containing `metadata.json` and vector store) into `kb_root/spaces/`, the UI shows the Space in the list on refresh without running ingestion or import.
 
 ### 4.2. Ingestion & Chunking
 - **F-2.1:** The ingestion pipeline MUST process PDFs using Docling, supporting text, tables, and images.

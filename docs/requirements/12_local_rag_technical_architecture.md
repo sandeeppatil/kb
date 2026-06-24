@@ -222,6 +222,7 @@ sequenceDiagram
 - On startup, the MCP server scans the configured `spaces/` root.
 - Each valid `metadata.json` becomes a discoverable tool or resource.
 - Invalid Spaces are skipped and reported through logs and the admin console.
+- The admin console uses the same discovery mechanism to populate the Space list in the UI, scanning `kb_root/spaces/` whenever the configuration changes or the Spaces view is refreshed.
 
 ### 8.2 Query Routing
 - Default path: one MCP tool per Space, letting the client choose based on descriptions.

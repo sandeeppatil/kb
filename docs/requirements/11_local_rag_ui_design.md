@@ -88,6 +88,7 @@ flowchart LR
 
 **Key Outputs**
 - Space cards with description, chunk count, model, last updated time, and health badge
+- Space list populated by scanning the configured knowledge base root (`kb_root/spaces/`) for valid Spaces (including those created on other machines but present on disk)
 - Summary tiles: total Spaces, total chunks, active ingestion runs, MCP server status
 - Empty state prompting the first Space creation
 
